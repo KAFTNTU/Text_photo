@@ -117,6 +117,83 @@ function isLevelServiceLine(line){
   return /^(базовий|середній|високий|складний|легкий|важкий|початковий|простий|низький) рівень$/.test(n);
 }
 
+function isKnownServiceHeadingLine(line){
+  const raw = String(line||'').trim();
+  if(!raw) return false;
+  const n = normalizeForCompare(raw);
+
+  // Тематичні заголовки між блоками питань. Їх не треба додавати до попереднього питання.
+  if(isLevelServiceLine(raw)) return true;
+
+  // Якщо рядок не є питанням і не є варіантом відповіді, але схожий на назву розділу.
+  const hasQuestionPunctuation = /[?？]/.test(raw);
+  const startsQuestion = detectQuestionStart(raw);
+  const startsAnswer = isAnswerLine(raw);
+  if(startsQuestion || startsAnswer || hasQuestionPunctuation) return false;
+
+  const headingWords = [
+    'характеристики','параметри','принцип','позначення','вольт','ампер',
+    'транзистори','діоди','резисторів','конденсаторів','цифрові','вузли',
+    'елементи','систем','мультиплексори','шифратори','дешифратори',
+    'тригери','генераторні','схеми','генератори','імпульсів','розрахунок',
+    'інтерфейс','шини','процесори','мікроконтролери','память','пам ять',
+    'аналогового','вводу','завади','фільтри','архітектура'
+  ];
+
+  if(headingWords.some(w => n.includes(w))) return true;
+
+  // Короткий рядок без варіанта відповіді після завершення відповідей найчастіше є заголовком.
+  return n.length >= 8 && n.length <= 120 && !/[.!?]$/.test(raw);
+}
+
+function removeTextAfterAnswerBlock(text){
+  const lines = String(text||'').split('\n');
+  const out = [];
+  let answerCount = 0;
+  let startedAnswers = false;
+  let lastWasAnswer = false;
+
+  for(let i=0;i<lines.length;i++){
+    const line = lines[i];
+    const t = String(line||'').trim();
+
+    if(!t){
+      out.push(line);
+      lastWasAnswer = false;
+      continue;
+    }
+
+    if(isAnswerLine(t)){
+      startedAnswers = true;
+      answerCount++;
+      lastWasAnswer = true;
+      out.push(line);
+      continue;
+    }
+
+    // Рівень складності після відповідей = кінець питання. Все після нього — не це питання.
+    if(startedAnswers && answerCount >= 2 && isLevelServiceLine(t)){
+      break;
+    }
+
+    // Якщо після списку А/Б/В/Г/Д пішов заголовок нового розділу без номера — обрізати.
+    if(startedAnswers && answerCount >= 2 && !lastWasAnswer && isKnownServiceHeadingLine(t)){
+      break;
+    }
+
+    // Якщо після варіантів одразу пішов службовий заголовок — теж обрізати.
+    if(startedAnswers && answerCount >= 2 && isKnownServiceHeadingLine(t)){
+      break;
+    }
+
+    out.push(line);
+    lastWasAnswer = false;
+  }
+
+  return out.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+
+
 function getSettings(){
   return {
     fmt: $('imageFormat').value,
@@ -292,18 +369,21 @@ function stripCorrectMarkersFromLine(line){
 }
 function cleanQuestionForDisplay(text, s){
   let q = removeExplicitAnswerLines(String(text||''));
+  q = removeTextAfterAnswerBlock(q);
   q = q.replace(/\[\[U_START\]\]/g,'').replace(/\[\[U_END\]\]/g,'');
   if(s.detectCorrectWord){
     q = q.split('\n').map(stripCorrectMarkersFromLine).join('\n');
   }
   q = removeIgnoredLines(q, s.ignored);
+  q = removeTextAfterAnswerBlock(q);
   return q.trim();
 }
 function prepareQuestions(){
   const s = getSettings();
   const chunks = splitQuestions($('rawInput').value, s.splitMode);
   questions = chunks.map(ch => {
-    const ans = findExplicitAnswer(ch) || (s.detectCorrectWord && findCorrectWordAnswer(ch)) || (s.detectUnderline && findUnderlineAnswer(ch)) || '';
+    const chMain = removeTextAfterAnswerBlock(ch);
+    const ans = findExplicitAnswer(chMain) || (s.detectCorrectWord && findCorrectWordAnswer(chMain)) || (s.detectUnderline && findUnderlineAnswer(chMain)) || '';
     const clean = cleanQuestionForDisplay(ch, s);
     return {raw: ch, text: clean, answer: ans};
   }).filter(q => q.text);

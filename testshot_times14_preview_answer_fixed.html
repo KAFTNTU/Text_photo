@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TestShot</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{--bg:#f3f4f6;--card:#fff;--line:#d9dde4;--text:#111827;--muted:#6b7280;--dark:#111827;--soft:#f9fafb}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px}
+  .top{height:56px;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  .brand{font-weight:900;font-size:16px;margin-right:auto}.muted{color:var(--muted);font-size:12px}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;min-height:40px}.btn.dark{background:#111827;color:#fff;border-color:#111827}.btn:active{transform:translateY(1px)}
+  .input,.select,textarea{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px 12px;font:inherit;width:100%} textarea{resize:vertical;min-height:260px;line-height:1.35}
+  .wrap{padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:1400px;margin:0 auto}.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  .row{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.field{display:flex;flex-direction:column;gap:5px;min-width:140px;flex:1}.field label{font-weight:800;font-size:12px;color:#374151}.small{font-size:12px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px}.check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;cursor:pointer}.check input{width:18px;height:18px}
+  .drop{border:1.5px dashed #c7cdd7;border-radius:14px;background:#fbfbfc;padding:10px;margin:8px 0;color:#374151}.file{width:100%;padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff}
+  .previewBox{background:#e5e7eb;border-radius:14px;padding:10px;overflow:auto;min-height:260px}.previewBox canvas{display:block;background:white;margin:0 auto;max-width:100%;height:auto}
+  .list{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}.item{border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}.item.active{border-color:#111827;background:#f3f4f6}.item .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pill{font-family:ui-monospace,Consolas,monospace;background:#f3f4f6;border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:12px;color:#374151;white-space:nowrap}
+  details{margin-top:8px} summary{cursor:pointer;font-weight:900;padding:8px;border-radius:10px;background:#f9fafb;border:1px solid var(--line)}
+  @media (max-width:850px){.wrap{grid-template-columns:1fr;padding:8px}.top{height:auto;flex-wrap:wrap}.brand{width:100%}.grid{grid-template-columns:1fr 1fr}textarea{min-height:220px}.btn{flex:1}.field{min-width:120px}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">TestShot</div>
+  <div class="field" style="max-width:220px"><label>Назва ZIP</label><input id="archiveName" class="input" value="questions"></div>
+  <div class="field" style="max-width:150px"><label>Почати нумерацію з</label><input id="startNumber" class="input" type="number" min="1" max="999999" value="1"></div>
+  <button id="downloadBtn" class="btn dark">⬇ Завантажити ZIP</button>
+</div>
+
+<div class="wrap">
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><b>Текст / файл</b><div class="small">Напиши питання або вибери DOCX / PDF / TXT. Старий DOC треба зберегти як DOCX.</div></div>
+    </div>
+    <div class="drop" id="dropZone">
+      <input id="fileInput" class="file" type="file" accept=".docx,.pdf,.txt,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,text/plain">
+      <div class="small" style="margin-top:6px">На телефоні натискай саме стандартну кнопку вибору файлу. Перетягування теж працює на ПК.</div>
+    </div>
+    <textarea id="rawInput" placeholder="Напишіть питання або перетягніть файл сюди...\n\n1. Текст питання\nА) варіант\nБ) правильний варіант правильно\nВ) варіант"></textarea>
+
+    <details open>
+      <summary>Налаштування</summary>
+      <div class="grid" style="margin-top:10px">
+        <div class="field"><label>Формат фото</label><select id="imageFormat" class="select"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="gif">GIF</option></select></div>
+        <div class="field"><label>Макс. ширина, px</label><input id="maxWidth" class="input" type="number" min="300" max="1440" value="900"></div>
+        <div class="field"><label>Шрифт, pt</label><input id="fontSize" class="input" type="number" min="8" max="32" step="0.5" value="14"></div>
+        <div class="field"><label>Розділення</label><select id="splitMode" class="select"><option value="smart">Авто</option><option value="blank">Порожній рядок</option><option value="manual">---</option></select></div>
+        <div class="field"><label>Заголовок</label><select id="titleMode" class="select"><option value="none">Без заголовка</option><option value="zapytannia">Запитання 1...</option><option value="fromText">З тексту</option></select></div>
+        <label class="check"><input id="removeQuestionNumber" type="checkbox" checked>Забрати номер у фото</label>
+        <label class="check"><input id="inlineOneWordAnswers" type="checkbox" checked>Одне слово — в рядок</label>
+        <label class="check"><input id="answerInFileName" type="checkbox" checked>Писати відповідь у назві файлу</label>
+        <label class="check"><input id="detectCorrectWord" type="checkbox" checked>Відповідь по слову “правильно”</label>
+        <label class="check"><input id="detectUnderline" type="checkbox" checked>Відповідь по підкресленню</label>
+      </div>
+      <div class="field" style="margin-top:8px"><label>Видаляти службові рядки</label><textarea id="ignoredLines" style="min-height:90px">Базовий рівень
+Середній рівень
+Високий рівень
+Складний рівень
+Легкий рівень
+Важкий рівень
+Початковий рівень
+Простий рівень
+Низький рівень</textarea></div>
+    <div class="small" style="margin-top:6px">Фото рендериться як документ: Times New Roman 14 pt, міжрядковий інтервал 1.5.</div>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div><b>Попередній перегляд</b><div class="small"><span id="countLabel">0 питань</span> · <span>назва:</span> <span id="fileNamePreview" class="pill">1_Б.png</span></div></div>
+      <div class="row"><button id="prevBtn" class="btn">‹</button><button id="nextBtn" class="btn">›</button></div>
+    </div>
+    <div class="previewBox" style="margin-top:10px"><canvas id="previewCanvas"></canvas></div>
+    <div style="margin-top:10px"><b>Список питань</b></div>
+    <div id="questionList" class="list" style="margin-top:8px"></div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let questions = [];
+let selectedIndex = 0;
+let imageStore = Object.create(null);
+let lastObjectUrls = [];
+
+if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }
+
+function toast(msg){ alert(msg); }
+function extFor(fmt){ return fmt === 'jpeg' ? 'jpg' : fmt; }
+function sanitizeZipName(s){ return String(s||'questions').replace(/[\\/:*?"<>|]+/g,'_').replace(/\s+/g,'_').replace(/_+/g,'_').slice(0,80) || 'questions'; }
+function normalizeAnswerLabel(letter){ const map={A:'А',B:'Б',C:'В',D:'Г',E:'Д',F:'Е',G:'Ж'}; const l=String(letter||'').trim().toUpperCase(); return map[l]||l; }
+function escapeReg(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+function normalizeLettersForCompare(s){
+  // У деяких тестах український текст набраний схожими латинськими літерами:
+  // piвeнь, Baжкий, cepеднiй. Для фільтра це треба прирівняти до кирилиці.
+  const map = {
+    'a':'а','b':'в','c':'с','e':'е','i':'і','o':'о','p':'р','x':'х','y':'у','k':'к','m':'м','h':'н','t':'т',
+    'A':'А','B':'В','C':'С','E':'Е','I':'І','O':'О','P':'Р','X':'Х','Y':'У','K':'К','M':'М','H':'Н','T':'Т'
+  };
+  return String(s||'').replace(/[abceiopxykmhtABCEIOPXYKMHT]/g, ch => map[ch] || ch);
+}
+function normalizeForCompare(s){
+  return normalizeLettersForCompare(String(s||''))
+    .toLowerCase()
+    .replace(/<[^>]*>/g,' ')
+    .replace(/[^\p{L}\p{N}]+/gu,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function isLevelServiceLine(line){
+  const n = normalizeForCompare(line);
+  return /^(базовий|середній|високий|складний|легкий|важкий|початковий|простий|низький) рівень$/.test(n);
+}
+
+function getSettings(){
+  return {
+    fmt: $('imageFormat').value,
+    start: Math.max(1, Math.min(999999, parseInt($('startNumber').value)||1)),
+    maxWidth: Math.max(300, Math.min(1440, parseInt($('maxWidth').value)||900)),
+    fontSize: Math.max(8, Math.min(32, parseFloat($('fontSize').value)||14)), // pt
+    splitMode: $('splitMode').value,
+    titleMode: $('titleMode').value,
+    removeNumber: $('removeQuestionNumber').checked,
+    inlineOneWord: $('inlineOneWordAnswers').checked,
+    answerInFileName: $('answerInFileName') ? $('answerInFileName').checked : true,
+    detectCorrectWord: $('detectCorrectWord').checked,
+    detectUnderline: $('detectUnderline').checked,
+    ignored: $('ignoredLines').value.split(/\n+/).map(x=>x.trim()).filter(Boolean)
+  };
+}
+
+function detectQuestionStart(line){
+  const t = String(line||'').trim();
+  return /^\d{1,5}\s*[\)\.\:\-–]\s*\S/.test(t) || /^(питання|запитання|question|№)\s*\.?\s*\d{1,5}\b/i.test(t);
+}
+function splitQuestions(text, mode){
+  const src = String(text||'').replace(/\r\n/g,'\n').replace(/\u00A0/g,' ').trim();
+  if(!src) return [];
+  if(mode==='manual') return src.split(/\n?\s*---+\s*\n?/).map(x=>x.trim()).filter(Boolean);
+  if(mode==='blank') return src.split(/\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
+  const lines = src.split('\n');
+  const starts = [];
+  lines.forEach((line,i)=>{ if(detectQuestionStart(line)) starts.push(i); });
+  if(starts.length >= 2){
+    return starts.map((st,i)=>lines.slice(st, starts[i+1] ?? lines.length).join('\n').trim()).filter(Boolean);
+  }
+  const blank = src.split(/\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
+  if(blank.length > 1) return blank;
+  const oneLine = src.replace(/\s+(?=\d{1,5}\s*[\)\.]\s*\S)/g,'\n');
+  if(oneLine !== src) return splitQuestions(oneLine, 'smart');
+  return [src];
+}
+
+function stripQuestionNumber(text){
+  let s = String(text||'').trim();
+  s = s.replace(/^\s*\d{1,5}\s*[\)\.\:\-–]\s*/,'');
+  s = s.replace(/^\s*(питання|запитання|question|№)\s*\.?\s*\d{1,5}\s*[\:\.\-–]?\s*/i,'');
+  return s.trim();
+}
+function splitTitleBody(q, index, s){
+  const raw = String(q||'').trim();
+  const first = raw.split('\n')[0] || '';
+  let titleFromText = '';
+  const m1 = first.match(/^\s*(\d{1,5})\s*[\)\.\:\-–]\s*(.*)$/);
+  const m2 = first.match(/^\s*((?:питання|запитання|question|№)\s*\.?\s*\d{1,5})\s*[\:\.\-–]?\s*(.*)$/i);
+  let body = raw;
+  if(m1){ titleFromText='Запитання '+m1[1]; body=[m1[2], ...raw.split('\n').slice(1)].join('\n').trim(); }
+  else if(m2){ titleFromText=m2[1]; body=[m2[2], ...raw.split('\n').slice(1)].join('\n').trim(); }
+  if(!s.removeNumber) body = raw;
+  let title = '';
+  if(s.titleMode==='zapytannia') title = 'Запитання ' + (s.start + index);
+  else if(s.titleMode==='fromText') title = titleFromText;
+  return {title, body: body || raw};
+}
+
+function removeIgnoredLines(text, ignored){
+  const pats = ignored.map(normalizeForCompare).filter(Boolean);
+  return String(text||'').split('\n').filter(line=>{
+    const raw = String(line||'').trim();
+    const n = normalizeForCompare(raw);
+    if(!n) return true;
+    // Прибирає рівні навіть у дужках і навіть якщо частина літер латинські: (Baжкий piвeнь)
+    if(isLevelServiceLine(raw)) return false;
+    if(!pats.length) return true;
+    return !pats.some(p => n === p || n.includes(p));
+  }).join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function lineAnswerLetter(line){
+  const cleaned = String(line||'')
+    .replace(/\[\[U_START\]\]/g,'')
+    .replace(/\[\[U_END\]\]/g,'')
+    .trim();
+  let m = cleaned.match(/^([А-ЯA-ZІЇЄҐ])\s*[\)\.\:\-–]/i);
+  if(m) return normalizeAnswerLabel(m[1]);
+  m = cleaned.match(/(?:^|\s)([А-ЯA-ZІЇЄҐ])\s*[\)\.\:\-–]/i);
+  return m ? normalizeAnswerLabel(m[1]) : '';
+}
+function findUnderlineAnswer(text){
+  const lines = String(text||'').split('\n');
+  for(const line of lines){
+    if(line.includes('[[U_START]]')){
+      const l = lineAnswerLetter(line);
+      if(l) return l;
+      const marked = (line.match(/\[\[U_START\]\]([\s\S]*?)\[\[U_END\]\]/)||[])[1] || '';
+      const lm = lineAnswerLetter(marked);
+      if(lm) return lm;
+    }
+  }
+  return '';
+}
+
+function isAnswerLine(line){
+  return /^\s*([А-ЯA-ZІЇЄҐ])\s*[\)\.\:\-–]/i.test(String(line||''));
+}
+
+function normalizeConfusableLetters(s){
+  const map = {
+    'a':'а','b':'в','c':'с','e':'е','i':'і','o':'о','p':'р','x':'х','y':'у','k':'к','m':'м','h':'н','t':'т',
+    'A':'А','B':'В','C':'С','E':'Е','I':'І','O':'О','P':'Р','X':'Х','Y':'У','K':'К','M':'М','H':'Н','T':'Т'
+  };
+  return String(s||'').replace(/[abceiopxykmhtABCEIOPXYKMHT]/g, ch => map[ch] || ch);
+}
+function hasCorrectMarker(line){
+  const raw = String(line||'');
+  if(/(?:✅|✓|✔|\(\+\)|\s\+\s*$)/u.test(raw)) return true;
+  const n = normalizeConfusableLetters(raw).toLowerCase();
+  return /(правильн|вірн|correct)/u.test(n);
+}
+
+function correctWordRegex(){
+  return /(правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct|✅|✓|✔|\(\+\)|\s\+\s*$)/iu;
+}
+function findExplicitAnswer(text){
+  const lines = String(text||'').split('\n');
+  for(const line of lines){
+    const t = line.trim();
+    let m = t.match(/(?:правильн[а-яіїєґa-z]*\s*)?(?:відповідь|answer)\s*[:\-–]?\s*(?:варіант\s*)?([А-ЯA-ZІЇЄҐ])\s*[\)\.]?/iu);
+    if(m) return normalizeAnswerLabel(m[1]);
+    m = t.match(/(?:правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct)\s*(?:варіант)?\s*[:\-–]?\s*([А-ЯA-ZІЇЄҐ])\s*[\)\.]?/iu);
+    if(m) return normalizeAnswerLabel(m[1]);
+
+    const n = normalizeConfusableLetters(t).toLowerCase();
+    if(/відповідь|answer|правильн|вірн|correct/u.test(n)){
+      const tail = t.match(/([А-ЯA-ZІЇЄҐ])\s*[\)\.]?\s*$/i);
+      if(tail) return normalizeAnswerLabel(tail[1]);
+    }
+  }
+  return '';
+}
+function removeExplicitAnswerLines(text){
+  return String(text||'').split('\n').filter(line=>{
+    const t=line.trim();
+    if(/^(?:правильн[а-яіїєґa-z]*\s*)?(?:відповідь|answer)\s*[:\-–]?\s*(?:варіант\s*)?[А-ЯA-ZІЇЄҐ]\s*[\)\.]?\s*$/iu.test(t)) return false;
+    if(/^(?:правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct)\s*(?:варіант)?\s*[:\-–]?\s*[А-ЯA-ZІЇЄҐ]\s*[\)\.]?\s*$/iu.test(t)) return false;
+    return true;
+  }).join('\n');
+}
+function findCorrectWordAnswer(text){
+  const lines = String(text||'').split('\n');
+  for(const line of lines){
+    if(hasCorrectMarker(line)){
+      const l = lineAnswerLetter(line);
+      if(l) return l;
+    }
+  }
+  return '';
+}
+function stripCorrectMarkersFromLine(line){
+  let s = String(line||'')
+    .replace(/\s*(?:✅|✓|✔|\(\+\))\s*/gu,' ')
+    .replace(/\s+\+\s*$/u,'');
+  s = s.split(/(\s+)/).filter(part=>{
+    const n = normalizeConfusableLetters(part).toLowerCase().replace(/[^а-яіїєґa-z]/giu,'');
+    return !(n.includes('правильн') || n.includes('вірн') || n === 'correct');
+  }).join('');
+  return s.replace(/\s{2,}/g,' ').trim();
+}
+function cleanQuestionForDisplay(text, s){
+  let q = removeExplicitAnswerLines(String(text||''));
+  q = q.replace(/\[\[U_START\]\]/g,'').replace(/\[\[U_END\]\]/g,'');
+  if(s.detectCorrectWord){
+    q = q.split('\n').map(stripCorrectMarkersFromLine).join('\n');
+  }
+  q = removeIgnoredLines(q, s.ignored);
+  return q.trim();
+}
+function prepareQuestions(){
+  const s = getSettings();
+  const chunks = splitQuestions($('rawInput').value, s.splitMode);
+  questions = chunks.map(ch => {
+    const ans = findExplicitAnswer(ch) || (s.detectCorrectWord && findCorrectWordAnswer(ch)) || (s.detectUnderline && findUnderlineAnswer(ch)) || '';
+    const clean = cleanQuestionForDisplay(ch, s);
+    return {raw: ch, text: clean, answer: ans};
+  }).filter(q => q.text);
+  if(selectedIndex >= questions.length) selectedIndex = Math.max(0, questions.length-1);
+  renderAll();
+}
+
+function isSingleWordAnswer(text){
+  const raw = String(text||'').trim();
+  if(!raw || /\[image:/i.test(raw)) return false;
+  const cleaned = raw.replace(/^["'“”«»„\(\[\{]+/g,'').replace(/["'“”«»„\)\]\}\.,;:!?]+$/g,'').trim();
+  return !!cleaned && !/\s/.test(cleaned);
+}
+function inlineOneWordAnswers(body){
+  const lines = String(body||'').split('\n');
+  let first = -1; const answers=[];
+  for(let i=0;i<lines.length;i++){
+    const t=lines[i].trim(); if(!t) continue;
+    const m=t.match(/^([А-ЯA-ZІЇЄҐ])\s*[\)\.\:\-–]\s*(.+)$/i);
+    if(m){ if(first<0) first=i; answers.push({i,label:normalizeAnswerLabel(m[1]),txt:m[2].trim()}); }
+    else if(first>=0) return body;
+  }
+  if(first<0 || answers.length<2) return body;
+  if(!answers.every(a=>isSingleWordAnswer(a.txt))) return body;
+  const idxs = new Set(answers.map(a=>a.i));
+  for(let i=first;i<lines.length;i++){ if(lines[i].trim() && !idxs.has(i)) return body; }
+  const before = lines.slice(0, first).join('\n').trim();
+  const row = answers.map(a=>`${a.label}) ${a.txt}`).join('    ');
+  return [before,row].filter(Boolean).join('\n');
+}
+function fileNameFor(i){
+  const s=getSettings(); const ext=extFor(s.fmt); const num=String(s.start+i); const ans=(s.answerInFileName && questions[i]?.answer) ? '_'+questions[i].answer : '';
+  return `${num}${ans}.${ext}`;
+}
+
+function measureText(ctx, txt){ return ctx.measureText(txt).width; }
+function wrapLine(ctx, line, maxW){
+  if(!line.trim()) return [''];
+  const words=line.split(/\s+/); const out=[]; let cur='';
+  for(const w of words){
+    const test=(cur+' '+w).trim();
+    if(measureText(ctx,test)<=maxW || !cur) cur=test;
+    else {out.push(cur); cur=w;}
+  }
+  if(cur) out.push(cur); return out;
+}
+function ptToPx(pt){ return pt * 96 / 72; }
+function dataUrlToImage(src){
+  return new Promise((resolve,reject)=>{ const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject; img.src=src; });
+}
+async function renderCanvas(q, canvas){
+  const s=getSettings(); const dpr=1; const fontPt=s.fontSize; const fontPx=ptToPx(fontPt); const lineH=Math.round(fontPx*1.5); const margin=4; const pad=0;
+  const canvasFont = `${fontPt}pt "Times New Roman", Times, serif`;
+  const work=document.createElement('canvas'); const ctx=work.getContext('2d'); ctx.font=canvasFont;
+  let {title, body}=splitTitleBody(q.text, selectedIndex, s);
+  if(s.inlineOneWord) body=inlineOneWordAnswers(body);
+  const parts=[];
+  if(title) parts.push({type:'text', text:title, title:true});
+  const split = body.split(/(\[image:[^\]]+\])/i);
+  for(const part of split){
+    const m=part.trim().match(/^\[image:([^\]]+)\]$/i);
+    if(m){ parts.push({type:'image', name:m[1].trim()}); }
+    else if(part){ for(const line of part.replace(/\n{3,}/g,'\n\n').split('\n')) parts.push({type:'line', text:line}); }
+  }
+  let rows=[]; let maxTextW=0; let maxImageW=0;
+  for(const p of parts){
+    if(p.type==='image'){
+      const src=imageStore[p.name];
+      if(src){
+        try{ const img=await dataUrlToImage(src); const scale=Math.min(1,(s.maxWidth-margin*2)/img.width,520/img.height); rows.push({type:'image',img,w:Math.round(img.width*scale),h:Math.round(img.height*scale)}); maxImageW=Math.max(maxImageW,Math.round(img.width*scale)); }
+        catch{ rows.push({type:'text', text:'[фото не завантажено]', h:lineH}); }
+      } else rows.push({type:'text', text:`[фото не знайдено: ${p.name}]`, h:lineH});
+    } else {
+      const text=p.text||''; const wrap = p.title ? [text] : wrapLine(ctx,text,s.maxWidth-margin*2);
+      for(const line of wrap){ maxTextW=Math.max(maxTextW,measureText(ctx,line)); rows.push({type:'text', text:line, title:p.title, h:lineH}); }
+      if(p.title) rows.push({type:'gap',h:3});
+    }
+  }
+  const width=Math.ceil(Math.min(s.maxWidth, Math.max(220, maxTextW, maxImageW)+margin*2));
+  const height=Math.ceil(Math.max(80, rows.reduce((a,r)=>a+r.h+(r.type==='image'?6:0),0)+margin*2));
+  canvas.width=width*dpr; canvas.height=height*dpr; canvas.style.width=width+'px'; canvas.style.height=height+'px';
+  const c=canvas.getContext('2d'); c.scale(dpr,dpr); c.fillStyle='white'; c.fillRect(0,0,width,height); c.fillStyle='black'; c.font=canvasFont; c.textBaseline='top';
+  let y=margin;
+  for(const r of rows){
+    if(r.type==='gap'){ y+=r.h; continue; }
+    if(r.type==='image'){ c.drawImage(r.img, Math.round((width-r.w)/2), y, r.w, r.h); y+=r.h+6; continue; }
+    c.fillText(r.text, margin, y); y+=r.h;
+  }
+  return canvas;
+}
+async function canvasToBlob(canvas, fmt){
+  if(fmt==='gif') fmt='png';
+  const type=fmt==='jpeg'?'image/jpeg':'image/png';
+  return new Promise(resolve=>canvas.toBlob(resolve,type,0.92));
+}
+async function renderAll(){
+  $('countLabel').textContent = `${questions.length} питань`;
+  const list=$('questionList'); list.innerHTML='';
+  questions.forEach((q,i)=>{
+    const div=document.createElement('div'); div.className='item'+(i===selectedIndex?' active':'');
+    const short=q.text.replace(/\[image:[^\]]+\]/g,'[фото]').replace(/\s+/g,' ').slice(0,90);
+    div.innerHTML=`<span class="txt">${i+1}. ${short}</span><span class="pill">${fileNameFor(i)}</span>`;
+    div.onclick=()=>{ selectedIndex=i; renderAll(); };
+    list.appendChild(div);
+  });
+  if(!questions.length){ $('fileNamePreview').textContent=String(getSettings().start)+'_Б.'+extFor(getSettings().fmt); const c=$('previewCanvas'); c.width=1;c.height=1; return; }
+  $('fileNamePreview').textContent=fileNameFor(selectedIndex);
+  await renderCanvas(questions[selectedIndex], $('previewCanvas'));
+}
+
+async function extractTXT(file){ return await file.text(); }
+async function extractPDF(file){
+  if(!window.pdfjsLib) throw new Error('PDF.js не завантажився. Перевір інтернет або встав текст вручну.');
+  const buf=await file.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:buf}).promise; const pages=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p); const content=await page.getTextContent(); pages.push(content.items.map(it=>it.str).join(' '));
+  }
+  return pages.join('\n\n');
+}
+function xmlText(node){ return node.textContent || ''; }
+async function extractDOCX(file){
+  if(!window.JSZip) throw new Error('JSZip не завантажився. Перевір інтернет.');
+  imageStore=Object.create(null);
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const relsXml=await zip.file('word/_rels/document.xml.rels')?.async('text');
+  const rels=Object.create(null);
+  if(relsXml){
+    const relDoc=new DOMParser().parseFromString(relsXml,'application/xml');
+    [...relDoc.getElementsByTagName('Relationship')].forEach(r=>{ const id=r.getAttribute('Id'), target=r.getAttribute('Target'); if(id&&target) rels[id]=target; });
+  }
+  let imgCount=1;
+  for(const [rid,target] of Object.entries(rels)){
+    if(!/^media\//.test(target)) continue;
+    const f=zip.file('word/'+target); if(!f) continue;
+    const blob=await f.async('blob'); const name='docx_image_'+String(imgCount++).padStart(4,'0')+'.'+(target.split('.').pop()||'png');
+    const url=URL.createObjectURL(blob); lastObjectUrls.push(url); imageStore[name]=url; rels[rid]='__IMG__'+name;
+  }
+  const xml=await zip.file('word/document.xml')?.async('text'); if(!xml) throw new Error('Не знайдено word/document.xml у DOCX.');
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  const nsW='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const nsA='http://schemas.openxmlformats.org/drawingml/2006/main';
+  const nsR='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const paras=[...doc.getElementsByTagNameNS(nsW,'p')];
+  const out=[];
+  for(const p of paras){
+    let line='';
+    for(const child of [...p.childNodes]){
+      if(child.localName==='r'){
+        const under=child.getElementsByTagNameNS(nsW,'u').length>0;
+        const highlighted=child.getElementsByTagNameNS(nsW,'highlight').length>0;
+        const colored=[...child.getElementsByTagNameNS(nsW,'color')].some(c=>{ const v=(c.getAttributeNS(nsW,'val')||c.getAttribute('w:val')||c.getAttribute('val')||'').toLowerCase(); return v && v!=='auto' && v!=='000000'; });
+        const texts=[...child.getElementsByTagNameNS(nsW,'t')].map(t=>t.textContent||'').join('');
+        if(texts) line += (under||highlighted||colored) ? '[[U_START]]'+texts+'[[U_END]]' : texts;
+        const blips=[...child.getElementsByTagNameNS(nsA,'blip')];
+        for(const b of blips){ const rid=b.getAttributeNS(nsR,'embed') || b.getAttribute('r:embed'); const ref=rels[rid]; if(ref&&ref.startsWith('__IMG__')) line += '\n[image:'+ref.slice(7)+']\n'; }
+        if(child.getElementsByTagNameNS(nsW,'tab').length) line+=' ';
+        if(child.getElementsByTagNameNS(nsW,'br').length) line+='\n';
+      }
+    }
+    if(line.trim()) out.push(line.trim());
+  }
+  return out.join('\n');
+}
+async function loadFile(file){
+  if(!file) return;
+  const name=file.name.toLowerCase();
+  try{
+    let text='';
+    if(name.endsWith('.doc')){ toast('Старий .doc браузер нормально не читає. Відкрий файл у Word і збережи як .docx.'); return; }
+    if(name.endsWith('.docx')) text=await extractDOCX(file);
+    else if(name.endsWith('.pdf')) text=await extractPDF(file);
+    else if(name.endsWith('.txt')) text=await extractTXT(file);
+    else { toast('Підтримуються DOCX, PDF, TXT.'); return; }
+    $('rawInput').value=text; selectedIndex=0; prepareQuestions(); $('fileInput').value='';
+  }catch(e){ console.error(e); toast('Не вдалося прочитати файл: '+e.message); }
+}
+
+$('fileInput').addEventListener('change', e=>loadFile(e.target.files[0]));
+$('dropZone').addEventListener('dragover', e=>{e.preventDefault(); $('dropZone').style.background='#eef2ff';});
+$('dropZone').addEventListener('dragleave', ()=>{$('dropZone').style.background='#fbfbfc';});
+$('dropZone').addEventListener('drop', e=>{e.preventDefault(); $('dropZone').style.background='#fbfbfc'; loadFile(e.dataTransfer.files[0]);});
+$('rawInput').addEventListener('input', ()=>prepareQuestions());
+['archiveName','imageFormat','startNumber','maxWidth','fontSize','splitMode','titleMode','removeQuestionNumber','inlineOneWordAnswers','answerInFileName','detectCorrectWord','detectUnderline','ignoredLines'].forEach(id=>{
+  const el=$(id); el.addEventListener('input',()=>prepareQuestions()); el.addEventListener('change',()=>prepareQuestions());
+});
+$('prevBtn').onclick=()=>{ if(!questions.length) return; selectedIndex=(selectedIndex-1+questions.length)%questions.length; renderAll(); };
+$('nextBtn').onclick=()=>{ if(!questions.length) return; selectedIndex=(selectedIndex+1)%questions.length; renderAll(); };
+$('downloadBtn').onclick=async()=>{
+  prepareQuestions();
+  if(!questions.length){ toast('Немає питань. Спочатку додай текст або DOCX.'); return; }
+  const zip=new JSZip(); const oldText=$('downloadBtn').textContent;
+  $('downloadBtn').disabled=true;
+  try{
+    for(let i=0;i<questions.length;i++){
+      selectedIndex=i; await renderAll();
+      $('downloadBtn').textContent=`Готово ${i+1}/${questions.length}`;
+      const c=document.createElement('canvas'); await renderCanvas(questions[i], c);
+      const blob=await canvasToBlob(c, getSettings().fmt);
+      zip.file(fileNameFor(i), blob);
+    }
+    const out=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(out); a.download=sanitizeZipName($('archiveName').value)+'.zip'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  }catch(e){ console.error(e); toast('Помилка ZIP: '+e.message); }
+  finally{ $('downloadBtn').disabled=false; $('downloadBtn').textContent=oldText; renderAll(); }
+};
+prepareQuestions();
+</script>
+</body>
+</html>

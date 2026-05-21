@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TestShot</title>
+<title>TestShot fixed</title>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -239,13 +239,21 @@ function findExplicitAnswer(text){
   const lines = String(text||'').split('\n');
   for(const line of lines){
     const t = line.trim();
-    let m = t.match(/(?:правильн[а-яіїєґa-z]*\s*)?(?:відповідь|answer)\s*[:\-–]?\s*(?:варіант\s*)?([А-ЯA-ZІЇЄҐ])\s*[\)\.]?/iu);
-    if(m) return normalizeAnswerLabel(m[1]);
-    m = t.match(/(?:правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct)\s*(?:варіант)?\s*[:\-–]?\s*([А-ЯA-ZІЇЄҐ])\s*[\)\.]?/iu);
+    const n = normalizeConfusableLetters(t).toLowerCase();
+
+    // Не брати букву з рядка варіанта типу "А) ... (правильний)".
+    // Такі рядки обробляє findCorrectWordAnswer().
+    if(isAnswerLine(t)) continue;
+
+    // Окремий службовий рядок: "Правильна відповідь: Б", "Відповідь: В", "Answer: A"
+    let m = t.match(/^(?:правильн[а-яіїєґa-z]*\s*)?(?:відповідь|answer)\s*[:\-–]?\s*(?:варіант\s*)?([А-ЯA-ZІЇЄҐ])\s*[\)\.]?\s*$/iu);
     if(m) return normalizeAnswerLabel(m[1]);
 
-    const n = normalizeConfusableLetters(t).toLowerCase();
-    if(/відповідь|answer|правильн|вірн|correct/u.test(n)){
+    m = t.match(/^(?:правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct)\s*(?:варіант)?\s*[:\-–]?\s*([А-ЯA-ZІЇЄҐ])\s*[\)\.]?\s*$/iu);
+    if(m) return normalizeAnswerLabel(m[1]);
+
+    // Для рядка "правильна відповідь Б" без двокрапки
+    if(/відповідь|answer/u.test(n)){
       const tail = t.match(/([А-ЯA-ZІЇЄҐ])\s*[\)\.]?\s*$/i);
       if(tail) return normalizeAnswerLabel(tail[1]);
     }
@@ -255,6 +263,7 @@ function findExplicitAnswer(text){
 function removeExplicitAnswerLines(text){
   return String(text||'').split('\n').filter(line=>{
     const t=line.trim();
+    if(isAnswerLine(t)) return true;
     if(/^(?:правильн[а-яіїєґa-z]*\s*)?(?:відповідь|answer)\s*[:\-–]?\s*(?:варіант\s*)?[А-ЯA-ZІЇЄҐ]\s*[\)\.]?\s*$/iu.test(t)) return false;
     if(/^(?:правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct)\s*(?:варіант)?\s*[:\-–]?\s*[А-ЯA-ZІЇЄҐ]\s*[\)\.]?\s*$/iu.test(t)) return false;
     return true;
@@ -271,13 +280,14 @@ function findCorrectWordAnswer(text){
   return '';
 }
 function stripCorrectMarkersFromLine(line){
-  let s = String(line||'')
-    .replace(/\s*(?:✅|✓|✔|\(\+\))\s*/gu,' ')
-    .replace(/\s+\+\s*$/u,'');
-  s = s.split(/(\s+)/).filter(part=>{
-    const n = normalizeConfusableLetters(part).toLowerCase().replace(/[^а-яіїєґa-z]/giu,'');
-    return !(n.includes('правильн') || n.includes('вірн') || n === 'correct');
-  }).join('');
+  let s = String(line||'');
+
+  // Прибирає маркери відповіді з самого фото:
+  // "(правильний)", "(пpaвильний)", "правильно", "correct", "+", "✅"
+  s = s.replace(/\s*[\(\[]?\s*(?:правильн[а-яіїєґa-z]*|вірн[а-яіїєґa-z]*|correct)\s*[\)\]]?\s*/giu,' ');
+  s = s.replace(/\s*(?:✅|✓|✔|\(\+\))\s*/gu,' ');
+  s = s.replace(/\s+\+\s*$/u,'');
+
   return s.replace(/\s{2,}/g,' ').trim();
 }
 function cleanQuestionForDisplay(text, s){
@@ -325,7 +335,8 @@ function inlineOneWordAnswers(body){
   return [before,row].filter(Boolean).join('\n');
 }
 function fileNameFor(i){
-  const s=getSettings(); const ext=extFor(s.fmt); const num=String(s.start+i); const ans=(s.answerInFileName && questions[i]?.answer) ? '_'+questions[i].answer : '';
+  const s=getSettings(); const ext=extFor(s.fmt); const num=String(s.start+i); const goodAns = /^[АБВГҐДЕЄЖ]$/.test(questions[i]?.answer||'') ? questions[i].answer : '';
+  const ans=(s.answerInFileName && goodAns) ? '_'+goodAns : '';
   return `${num}${ans}.${ext}`;
 }
 
